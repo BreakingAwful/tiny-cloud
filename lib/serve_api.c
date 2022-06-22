@@ -65,24 +65,57 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
   } while (strcmp(buf, "\r\n"));
 }
 
-// TODO: implement this
 void serve_user(int fd, char *token) {
 	printf("Log: token = %s\n", token);
+	if (!strcmp(token, "")) {
+		clienterror(fd, "/user", "401", "Unauthorized", "You should login first");
+		return;
+	}
+
+	// TODO: check token
 
 	json_object *root = json_object_new_object();
 	json_object *data = json_object_new_object();
 	json_object_object_add(data, "username", json_object_new_string("Jax"));
-	json_object_object_add(data, "usersex", json_object_new_string("男"));
+	json_object_object_add(data, "sex", json_object_new_string("男"));
 	json_object_object_add(data, "describeWord", json_object_new_string("测试"));
-	json_object_object_add(data, "photo", json_object_new_string("/assets/images/user/1.jpg"));
+	json_object_object_add(data, "photo", json_object_new_string("https://jaxvanyang.github.io/favicon.ico"));
 	json_object_object_add(root, "data", data);
 	serve_json(fd, root);
 	json_object_put(root);
 }
 
-// TODO: implement this
 void serve_login(int fd, char *cgiargs) {
-	printf("cgiargs = %s\n", cgiargs);
+	char username[MAXLINE], password[MAXLINE];
+	char *p, *q;
+	size_t len;
+
+	// Empty string
+	*username = *password = '\0';
+
+	if ((p = strstr(cgiargs, "username="))) {
+		if ((q = index(p, '&'))) {
+			len = q - p - 9;
+			strncpy(username, p + 9, len);
+			username[len] = '\0';
+		} else {
+			strcpy(username, p + 9);
+		}
+	}
+
+	if ((p = strstr(cgiargs, "password="))) {
+		if ((q = index(p, '&'))) {
+			len = q - p - 9;
+			strncpy(password, p + 9, len);
+			password[len] = '\0';
+		} else {
+			strcpy(password, p + 9);
+		}
+	}
+
+	printf("cgiargs = %s, username = %s, password = %s\n", cgiargs, username, password);
+
+	// TODO: check user info
 
 	json_object *root = json_object_new_object();
 	json_object *data = json_object_new_object();
