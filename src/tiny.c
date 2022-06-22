@@ -124,6 +124,9 @@ void doit(int fd) {
   char api[MAXLINE], cgiargs[MAXLINE], token[MAXLINE];
   rio_t rio;
 
+	// Empty string
+	*buf = *method = *uri = *version = *api = *cgiargs = *token = '\0';
+
   // Read request line and headers
   Rio_readinitb(&rio, fd);
   Rio_readlineb(&rio, buf, MAXLINE);
