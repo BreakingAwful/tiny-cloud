@@ -11,6 +11,7 @@
  */
 
 #include "csapp.h"
+#include "serve_api.h"
 
 #define MAXTYPE 128  // Max file type length
 
@@ -24,16 +25,9 @@ PathNode *insert_path(PathNode *pre, char *path);
 void free_list(PathNode *listp);
 
 void doit(int fd);
-void read_requesthdrs(rio_t *rp, int *content_length);
-int parse_uri(char *uri, char *filename, char *cgiargs);
+int parse_uri(char *uri, char *api, char *cgiargs);
 int simplify_uri(char *uri);
-void serve_static(int fd, char *filename, size_t filesize,
-                  char *request_method);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs, char *request_method);
-void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
-                 char *longmsg);
-void serve_json(int fd, char *json);
 void sigchld_handler(int sig);
 void sigpipe_handler(int sig);
 
@@ -125,10 +119,9 @@ void free_list(PathNode *listp) {
 }
 
 void doit(int fd) {
-  int is_static, content_length = 0;
-  struct stat sbuf;
+  int is_valid, content_length = 0;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-  char filename[MAXLINE], cgiargs[MAXLINE];
+  char api[MAXLINE], cgiargs[MAXLINE], token[MAXLINE];
   rio_t rio;
 
   // Read request line and headers
@@ -142,87 +135,36 @@ void doit(int fd) {
                 "Tiny does not implement this method");
     return;
   }
-  read_requesthdrs(&rio, &content_length);  // process remaining headers
+	*token = '\0';
+  read_requesthdrs(&rio, &content_length, token);  // process remaining headers
 
   // check and simplify the URI
   if (!simplify_uri(uri)) {
-    clienterror(fd, uri, "400", "Bad Request",
-                "Tiny does cannot parse this URI");
+		clienterror(fd, uri, "400", "Bad Request",
+				"Tiny cannot parse this URI");
+		return;
   }
   // printf("Simplified URI: %s\n", uri);
 
   // Parse URI from request
-  is_static = parse_uri(uri, filename, cgiargs);
-  if (stat(filename, &sbuf) < 0) {  // check if the file exists
-    // clienterror(fd, filename, "200", "Not found",
-    //             "Tiny couldn't find this file");
-		serve_json(fd,
-				"{\"data\": {\"token\": \"jax\", \"username\": \"Jax\"}, \"status\": 200}");
+  is_valid = parse_uri(uri, api, cgiargs);
+	if (!is_valid) {
+		clienterror(fd, uri, "404", "Invalid API",
+				"Tiny does not implement this API");
 		return;
-  }
-  if (content_length != 0) {  // process request body for POST
+	}
+
+	if (content_length > MAXLINE) {
+		clienterror(fd, uri, "500", "Too Large Body",
+				"Tiny cannot handle this large request body");
+		return;
+	}
+
+  if (content_length > 0) {  // process request body for POST
     Rio_readnb(&rio, cgiargs, content_length);
-    cgiargs[content_length] = '\0';
   }
 
-  // Sleep(5);         // Test connection close
-  if (is_static) {  // Serve static content
-    if (!(S_ISREG(sbuf.st_mode) && (S_IRUSR & sbuf.st_mode))) {
-      clienterror(fd, filename, "403", "Forbidden",
-                  "Tiny couldn't read the file");
-      return;
-    }
-    serve_static(fd, filename, sbuf.st_size, method);
-  } else {  // Serve dynamic content
-    if (!(S_ISREG(sbuf.st_mode) && (S_IXUSR & sbuf.st_mode))) {
-      clienterror(fd, filename, "403", "Forbidden",
-                  "Tiny couldn't run the CGI program");
-      return;
-    }
-    serve_dynamic(fd, filename, cgiargs, method);
-  }
-}
-
-void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
-                 char *longmsg) {
-  char buf[MAXLINE], body[MAXBUF];
-
-  // Build the HTTP response body
-  sprintf(body,
-          "<html><title>Tiny Error</title>"
-          "<body bgcolor="
-          "ffffff"
-          ">\r\n"
-          "%s: %s\r\n"
-          "<p>%s: %s\r\n"
-          "<hr><em>The Tiny Web server</em>\r\n",
-          errnum, shortmsg, cause, longmsg);
-
-  // Print the HTTP response
-  sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
-  Rio_writen(fd, buf, strlen(buf));
-  sprintf(buf, "Content-type: text/html\r\n");
-  Rio_writen(fd, buf, strlen(buf));
-  sprintf(buf, "Content-length: %ld\r\n\r\n", strlen(body));
-  Rio_writen(fd, buf, strlen(buf));
-  Rio_writen(fd, body, strlen(body));
-}
-
-void serve_json(int fd, char *json) {
-  char buf[MAXLINE];
-	size_t len = strlen(json);
-
-	// Write response headers
-	sprintf(buf,
-			"HTTP/1.0 200 OK\r\n"
-			"Content-type: application/json\r\n"
-			"Content-length: %ld\r\n"
-			"Connection: close\r\n\r\n",
-			len);
-
-  // Print the HTTP response
-  Rio_writen(fd, buf, strlen(buf));
-  Rio_writen(fd, json, len);
+	do_serve(fd, &rio, api, cgiargs, token);
 }
 
 void sigchld_handler(int sig) {
@@ -252,41 +194,24 @@ void sigpipe_handler(int sig) {
   errno = olderrnor;
 }
 
-// Simply read remaining request headers and print them
-void read_requesthdrs(rio_t *rp, int *content_length) {
-  char buf[MAXLINE], *p;
-
-  do {
-    Rio_readlineb(rp, buf, MAXLINE);
-    if ((p = strstr(buf, "Content-Length:")) != NULL) {
-      *content_length = strtol(p + 16, NULL, 10);
-    }
-    printf("%s", buf);
-  } while (strcmp(buf, "\r\n"));
-}
-
-// Return 1 if static, 0 if dynamic
-int parse_uri(char *uri, char *filename, char *cgiargs) {
+// Return 1 if valid, 0 otherwise
+// uri example: /cloudbox/login?username=a&passwd=a
+int parse_uri(char *uri, char *api, char *cgiargs) {
   char *ptr;
 
-  if (strstr(uri, "cgi-bin")) {  // Dynamic content
-    ptr = index(uri, '?');
-    if (ptr) {
-      strcpy(cgiargs, ptr + 1);
-      *ptr = '\0';
-    } else {
-      strcpy(cgiargs, "");
-    }
-    sprintf(filename, ".%s", uri);
-    return 0;
-  } else {
-    strcpy(cgiargs, "");
-    sprintf(filename, ".%s", uri);
-    if (filename[strlen(filename) - 1] == '/') {
-      strcat(filename, "index.html");
-    }
-    return 1;
-  }
+	if (strncmp(uri, "/cloudbox/", 10)) return 0;
+
+	ptr = index(uri, '?');
+	if (ptr) {
+		strcpy(cgiargs, ptr + 1);
+		*ptr = '\0';
+		sprintf(api, "%s", uri + 10);
+		*ptr = '?';
+	} else {
+		sprintf(api, "%s", uri + 10);
+	}
+
+	return 1;
 }
 
 // Remove redundant "../"" and "./" from the URI if the uri is valid
@@ -345,45 +270,6 @@ int simplify_uri(char *uri) {
   return 1;
 }
 
-void serve_static(int fd, char *filename, size_t filesize,
-                  char *request_method) {
-  int srcfd;
-  size_t n;
-  char *srcp, filetype[MAXTYPE], buf[MAXBUF];
-
-  // Send response headers to client
-  get_filetype(filename, filetype);
-  sprintf(buf,
-          "HTTP/1.0 200 OK\r\n"
-          "Server: Tiny Web Server\r\n"
-          "Connection: close\r\n"
-          "Content-length: %ld\r\n"
-          "Content-type: %s\r\n\r\n",
-          filesize, filetype);
-  // Rio_writen(fd, buf, strlen(buf));
-  n = strlen(buf);
-  if (rio_writen(fd, buf, n) != n) {
-    if (errno == EPIPE) {  // Client closed connection
-      return;
-    } else {
-      unix_error("rio_writen error");
-    }
-  }
-  if (!strcasecmp(request_method, "HEAD")) return;
-  printf("Response headers:\n%s", buf);
-
-  // Send response body to client
-  srcfd = Open(filename, O_RDONLY, 0);
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-  Close(srcfd);
-  // Rio_writen(fd, srcp, filesize);
-  if (rio_writen(fd, srcp, filesize) != filesize && errno != EPIPE) {
-    unix_error("rio_writen error");
-  }
-  // Client may close too early here, but later operations are the same
-  Munmap(srcp, filesize);
-}
-
 // Derive file type from filename
 void get_filetype(char *filename, char *filetype) {
   if (strstr(filename, ".html"))
@@ -398,29 +284,4 @@ void get_filetype(char *filename, char *filetype) {
     strcpy(filetype, "video/mp4");
   } else
     strcpy(filetype, "text/plain");
-}
-
-void serve_dynamic(int fd, char *filename, char *cgiargs,
-                   char *request_method) {
-  char buf[MAXLINE], *emptylist[] = {NULL};
-  size_t n;
-
-  // Send first part of HTTP response headers
-  sprintf(buf, "HTTP/1.0 200 OK\r\n");
-  n = strlen(buf);
-  if (rio_writen(fd, buf, n) != n && errno != EPIPE) {
-    unix_error("rio_writen error");
-  }
-  sprintf(buf, "Server: Tiny Web Server\r\n");
-  n = strlen(buf);
-  if (rio_writen(fd, buf, n) != n && errno != EPIPE) {
-    unix_error("rio_writen error");
-  }
-
-  if (Fork() == 0) {  // Child process
-    setenv("QUERY_STRING", cgiargs, 1);
-    setenv("REQUEST_METHOD", request_method, 1);
-    Dup2(fd, STDOUT_FILENO);
-    Execve(filename, emptylist, environ);
-  }
 }
