@@ -223,10 +223,10 @@ int parse_uri(char *uri, char *api, char *cgiargs) {
 	if (ptr) {
 		strcpy(cgiargs, ptr + 1);
 		*ptr = '\0';
-		sprintf(api, "%s", uri + 10);
+		sprintf(api, "%s", uri + 9);
 		*ptr = '?';
 	} else {
-		sprintf(api, "%s", uri + 10);
+		sprintf(api, "%s", uri + 9);
 	}
 
 	return 1;
