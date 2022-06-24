@@ -128,9 +128,9 @@ void serve_login(int fd, char *cgiargs) {
 }
 
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
-	if (str_start_with(api, "/user")) {
+	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
-	} else if(str_start_with(api, "/login")) {
+	} else if(str_start_with(api, "login")) {
 		serve_login(fd, cgiargs);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
