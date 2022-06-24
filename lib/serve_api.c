@@ -3,6 +3,7 @@
  */
 
 #include "serve_api.h"
+#include "helper.h"
 
 void serve_json(int fd, json_object *root) {
   char buf[MAXLINE], body[MAXBUF];
@@ -67,7 +68,7 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
 
 void serve_user(int fd, char *token) {
 	printf("Log: token = %s\n", token);
-	if (!strcmp(token, "")) {
+	if (str_start_with(token, "")) {
 		clienterror(fd, "/user", "401", "Unauthorized", "You should login first");
 		return;
 	}
@@ -127,9 +128,9 @@ void serve_login(int fd, char *cgiargs) {
 }
 
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
-	if (!strcmp(api, "user")) {
+	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
-	} else if(!strcmp(api, "login")) {
+	} else if(str_start_with(api, "login")) {
 		serve_login(fd, cgiargs);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");

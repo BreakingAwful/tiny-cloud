@@ -12,6 +12,7 @@
 
 #include "csapp.h"
 #include "serve_api.h"
+#include "helper.h"
 
 #define MAXTYPE 128  // Max file type length
 
@@ -211,12 +212,12 @@ int parse_uri(char *uri, char *api, char *cgiargs) {
   char *ptr;
 
 	// Used for development
-	if (!strncmp(uri, "/file", 5)) {
+	if (str_start_with(uri, "/file")) {
 		sprintf(api, "%s", uri + 1);
 		return 0;	// file is not API
 	}
 
-	if (strncmp(uri, "/cloudbox/", 10)) return 0;
+	if (!str_start_with(uri, "/cloudbox/")) return 0;
 
 	ptr = index(uri, '?');
 	if (ptr) {
@@ -255,9 +256,9 @@ int simplify_uri(char *uri) {
     n = rptr - lptr + 1;  // Length of the segment
     if (n == 1 && *lptr == '/') {
       continue;  // Ignore this redundant "/"
-    } else if (n == 2 && strncmp(lptr, "./", 2) == 0) {
+    } else if (n == 2 && str_start_with(lptr, "./")) {
       continue;  // Ignore this redundant "./"
-    } else if (n == 3 && strncmp(lptr, "../", 3) == 0) {
+    } else if (n == 3 && str_start_with(lptr, "../")) {
       // Ignore this redundant "../" and remove the previous segment
       if (tail->pre == head) {  // No previous segment makes a invalid URI
         free_list(head);
