@@ -68,7 +68,7 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
 
 void serve_user(int fd, char *token) {
 	printf("Log: token = %s\n", token);
-	if (str_start_with(token, "")) {
+	if (!strcmp(token, "")) {
 		clienterror(fd, "/user", "401", "Unauthorized", "You should login first");
 		return;
 	}
@@ -120,8 +120,9 @@ void serve_login(int fd, char *cgiargs) {
 
 	json_object *root = json_object_new_object();
 	json_object *data = json_object_new_object();
-	json_object_object_add(data, "token",
-			json_object_new_string("Test token"));
+	json_object_object_add(data, "token", json_object_new_string(username));
+	json_object_object_add(data, "username", json_object_new_string(username));
+	json_object_object_add(data, "photo", json_object_new_string("https://jaxvanyang.github.io/favicon.ico"));
 	json_object_object_add(root, "data", data);
 	serve_json(fd, root);
 	json_object_put(root);
