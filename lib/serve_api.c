@@ -127,11 +127,68 @@ void serve_login(int fd, char *cgiargs) {
 	json_object_put(root);
 }
 
+void serve_file(int fd, char *api, char *token) {
+	char path[MAXLINE], *relative_path;
+	struct stat sbuf;
+	DIR *dirp;
+	json_object *root;
+
+	relative_path = api + 4;
+	if (*relative_path == '\0') {
+		strcpy(relative_path, "/");
+	}
+	sprintf(path, "file/%s%s", token, relative_path);
+
+	if (stat(path, &sbuf) < 0) {
+		clienterror(fd, api, "404", "Not Found",
+				"File or directory does not exist");
+		return;
+	}
+
+	if (S_ISREG(sbuf.st_mode)) {
+		root = json_object_new_object();
+		json_object_object_add(root, "path", json_object_new_string(relative_path));
+		json_object_object_add(root, "isFolder", json_object_new_boolean(0));
+		json_object_object_add(root, "url", json_object_new_string(path));
+		serve_json(fd, root);
+		json_object_put(root);
+		return;
+	}
+
+	if ((dirp = opendir(path)) == NULL) {
+		clienterror(fd, api, "403", "Forbidden", "You don't have the access");
+		return;
+	}
+
+	root = json_object_new_object();
+	json_object *children = json_object_new_array();
+	json_object_object_add(root, "path", json_object_new_string(relative_path));
+	json_object_object_add(root, "isFolder", json_object_new_boolean(1));
+	json_object_object_add(root, "children", children);
+	struct dirent *direntp = NULL;
+	while ((direntp = readdir(dirp))) {
+		char *name = direntp->d_name;
+		if (*name == '.') continue;
+
+		json_object *child = json_object_new_object();
+		json_object_object_add(child, "name", json_object_new_string(name));
+		json_object_object_add(child, "isFolder", json_object_new_boolean(direntp->d_type == DT_DIR));
+		json_object_array_add(children, child);
+	}
+	serve_json(fd, root);
+	json_object_put(root);
+}
+
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
+	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\n",
+			api, strlen(api), cgiargs, strlen(cgiargs), token, strlen(token));
+
 	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
 	} else if(str_start_with(api, "login")) {
 		serve_login(fd, cgiargs);
+	} else if(str_start_with(api, "file")) {
+		serve_file(fd, api, token);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}
