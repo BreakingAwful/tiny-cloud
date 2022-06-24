@@ -132,7 +132,7 @@ void serve_file(int fd, char *api, char *token) {
 	char path[MAXLINE], *relative_path;
 	struct stat sbuf;
 	DIR *dirp;
-	json_object *root;
+	json_object *root, *data, *children;
 
 	relative_path = api + 4;
 	if (*relative_path == '\0') {
@@ -148,10 +148,29 @@ void serve_file(int fd, char *api, char *token) {
 
 	if (S_ISREG(sbuf.st_mode)) {
 		root = json_object_new_object();
-		json_object_object_add(root, "path", json_object_new_string(relative_path));
-		json_object_object_add(root, "isFolder", json_object_new_boolean(0));
-		json_object_object_add(root, "url", json_object_new_string(path));
-		serve_json(fd, root);
+
+		// Build root
+		data = json_object_new_object();
+		json_object_object_add(root, "data", data);
+
+		// Build data entry
+		children = json_object_new_array();
+		json_object_object_add(data, "fileData", children);
+		json_object_object_add(data, "location", json_object_new_string(relative_path));
+		json_object_object_add(data, "locationFiles", json_object_new_array());
+		// json_object_object_add(data, "path", json_object_new_string(relative_path));
+		// json_object_object_add(data, "isFolder", json_object_new_boolean(0));
+		// json_object_object_add(data, "url", json_object_new_string(path));
+
+		// Build fileData entry
+		json_object *child = json_object_new_object();
+		json_object_object_add(data, "fileData", child);
+		json_object_object_add(child, "name", json_object_new_string(relative_path));
+		json_object_object_add(child, "lastUpdateDate", json_object_new_string("2022-6-24"));
+		json_object_object_add(child, "size", json_object_new_int(sbuf.st_size));
+		json_object_object_add(child, "isFolder", json_object_new_boolean(0));
+
+		// Build data entry
 		json_object_put(root);
 		return;
 	}
@@ -161,11 +180,21 @@ void serve_file(int fd, char *api, char *token) {
 		return;
 	}
 
+	// Build root
 	root = json_object_new_object();
-	json_object *children = json_object_new_array();
-	json_object_object_add(root, "path", json_object_new_string(relative_path));
-	json_object_object_add(root, "isFolder", json_object_new_boolean(1));
-	json_object_object_add(root, "children", children);
+	data = json_object_new_object();
+	json_object_object_add(root, "data", data);
+
+	// Build data
+	children = json_object_new_array();
+	json_object_object_add(data, "fileData", children);
+	json_object_object_add(data, "location", json_object_new_string(relative_path));
+	json_object_object_add(data, "locationFiles", json_object_new_array());
+	// json_object_object_add(data, "path", json_object_new_string(relative_path));
+	// json_object_object_add(data, "isFolder", json_object_new_boolean(1));
+	// json_object_object_add(data, "children", children);
+
+	// Build fileData
 	struct dirent *direntp = NULL;
 	while ((direntp = readdir(dirp))) {
 		char *name = direntp->d_name;
@@ -173,6 +202,8 @@ void serve_file(int fd, char *api, char *token) {
 
 		json_object *child = json_object_new_object();
 		json_object_object_add(child, "name", json_object_new_string(name));
+		json_object_object_add(child, "lastUpdateDate", json_object_new_string("2022-06-22"));
+		json_object_object_add(child, "size", json_object_new_int(1024));
 		json_object_object_add(child, "isFolder", json_object_new_boolean(direntp->d_type == DT_DIR));
 		json_object_array_add(children, child);
 	}
