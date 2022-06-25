@@ -124,7 +124,7 @@ void free_list(PathNode *listp) {
 void doit(int fd) {
   int is_valid, content_length = 0;
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-  char api[MAXLINE], cgiargs[MAXLINE], token[MAXLINE];
+  char api[MAXLINE], cgiargs[MAXLINE], token[MAXLINE], boundary[MAXLINE];
   rio_t rio;
 	struct stat sbuf;
 
@@ -143,7 +143,12 @@ void doit(int fd) {
     return;
   }
 	*token = '\0';
-  read_requesthdrs(&rio, &content_length, token);  // process remaining headers
+  read_requesthdrs(&rio, &content_length, token, boundary);
+	if (content_length > MAXFILE) {
+		clienterror(fd, uri, "500", "Too Large Body",
+				"Tiny cannot handle this large request body");
+		return;
+	}
 
   // check and simplify the URI
   // if (!simplify_uri(uri)) {
@@ -156,7 +161,8 @@ void doit(int fd) {
   // Parse URI from request
   is_valid = parse_uri(uri, api, cgiargs);
 	if (!is_valid) {
-		if (stat(api, &sbuf) >= 0 && S_ISREG(sbuf.st_mode) && (S_IRUSR & sbuf.st_mode)) {
+		if (stat(api, &sbuf) >= 0 && S_ISREG(sbuf.st_mode) &&
+				(S_IRUSR & sbuf.st_mode)) {
 			// Used for development
 			serve_static(fd, api, sbuf.st_size, method);
 		} else {
@@ -166,17 +172,11 @@ void doit(int fd) {
 		return;
 	}
 
-	if (content_length > MAXLINE) {
-		clienterror(fd, uri, "500", "Too Large Body",
-				"Tiny cannot handle this large request body");
-		return;
-	}
-
   // if (content_length > 0) {  // process request body for POST
   //   Rio_readnb(&rio, cgiargs, content_length);
   // }
 
-	do_serve(fd, &rio, api, cgiargs, token, content_length);
+	do_serve(fd, &rio, api, cgiargs, token, content_length, boundary);
 }
 
 void sigchld_handler(int sig) {

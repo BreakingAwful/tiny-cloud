@@ -49,8 +49,12 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
   Rio_writen(fd, body, strlen(body));
 }
 
-void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
+void read_requesthdrs(rio_t *rp, int *content_length, char *token,
+		char *boundary) {
   char buf[MAXLINE], *p;
+
+	// Set default boundary
+	strcpy(boundary, "--");
 
   do {
     Rio_readlineb(rp, buf, MAXLINE);
@@ -63,6 +67,8 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
 			strcpy(token, p + 7);
 			size_t len = strlen(token);
 			if (len >= 2) token[len - 2] = '\0';
+		} else if ((p = strstr(buf, "boundary="))) {
+			strcat(boundary, p + 9);
 		}
   } while (strcmp(buf, "\r\n"));
 }
@@ -217,7 +223,7 @@ void serve_file(int fd, char *api, char *token) {
 }
 
 void serve_create_file(int fd, char *api, char *token) {
-	char folder_path[MAXLINE], command[MAXLINE];
+	char folder_path[MAXSTR], command[MAXLINE];
 	char *relative_path = api + 12;
 
 	sprintf(folder_path, "file/%s%s", token, relative_path);
@@ -236,7 +242,7 @@ void serve_create_file(int fd, char *api, char *token) {
 
 void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
 		int content_length) {
-	char *json_string, file_path[MAXLINE], command[MAXLINE];
+	char *json_string, file_path[MAXSTR], command[MAXLINE];
 	const char *name;
 	char *relative_path = api + 11;
 	json_object *root, *resp, *data, *fail;
@@ -275,10 +281,60 @@ void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
 	free(json_string);
 }
 
+void serve_upload_file(int fd, rio_t *rp, char *api, char *token,
+		int content_length, char *boundary) {
+	char *relative_path, *p;
+	char file_path[MAXLINE], buf[MAXLINE + 10], filename[MAXSTR];
+	FILE *file;
+	int nread, boundary_len, total = 0;
+
+	// Retrieve filename
+	*buf = '\0';
+	do {
+		total += Rio_readlineb(rp, buf, MAXLINE);
+		if ((p = strstr(buf, "filename="))) {
+			copy_str_until(filename, p + 10, '\"');
+			printf("filename = %s\n", filename);
+		}
+	} while (strcmp(buf, "\r\n"));
+	relative_path = api + 10;
+	sprintf(file_path, "file/%s%s%s", token, relative_path, filename);
+
+	// Read & write data
+	file = Fopen(file_path, "w");
+	boundary_len = strlen(boundary);
+	boundary[boundary_len - 2] = '\0';
+	for (nread = Rio_readlineb(rp, buf, MAXLINE); strcmp(buf, "\r\n");
+			nread = Rio_readlineb(rp, buf, MAXLINE)) {
+		total += nread;
+		if ((p = strstr(buf, boundary))) {
+			*p = '\0';
+			fprintf(file, "%s", buf);
+			break;
+		}
+		fprintf(file, "%.*s", nread, buf);
+	}
+	if (!strcmp(buf, "\r\n")) {
+		total += Rio_readlineb(rp, buf, MAXLINE);
+	}
+
+	// Check if read to end
+	printf("content_length: %d, total: %d\n", content_length, total);
+	printf("lastline: %s", buf);
+	if (total == content_length || strstr(buf, boundary)) {
+		clienterror(fd, api, "200", "OK", "Upload file success");
+	} else {
+		clienterror(fd, api, "500", "Internal Error", "Upload file error");
+	}
+
+	Fclose(file);
+}
+
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
-		int content_length) {
+		int content_length, char *boundary) {
 	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\ncontent_length: %d\n",
 			api, strlen(api), cgiargs, strlen(cgiargs), token, strlen(token), content_length);
+	printf("boundary: %s, %ld\n", boundary, strlen(boundary));
 
 	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
@@ -290,6 +346,8 @@ void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		serve_create_file(fd, api, token);
 	} else if (str_start_with(api, "deleteFiles/")) {
 		serve_delete_files(fd, rp, api, token, content_length);
+	} else if (str_start_with(api, "uploadFile/")) {
+		serve_upload_file(fd, rp, api, token, content_length, boundary);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}

@@ -7,6 +7,9 @@
 
 #include "csapp.h"
 
+#define MAXFILE 500 << 10
+#define MAXSTR 1024
+
 int str_start_with(char *str, char *tar) {
 	while (*str == *tar && *tar != '\0') {
 		++str, ++tar;
@@ -69,6 +72,16 @@ int Decode_url(char *url) {
 		unix_error("Decode_url error");
 	}
 	return 1;
+}
+
+void copy_str_until(char *dest, char *src, char end) {
+	char *p, *q;
+	p = dest, q = src;
+	while (*q != '\0' && *q != end) {
+		*p = *q;
+		++p, ++q;
+	}
+	*p = '\0';
 }
 
 #endif	// __HELPER_H__
