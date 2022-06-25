@@ -137,7 +137,7 @@ void doit(int fd) {
   printf("Request headers:\n%s", buf);
   sscanf(buf, "%s %s %s", method, uri, version);
   if (strcasecmp(method, "GET") && strcasecmp(method, "HEAD") &&
-      strcasecmp(method, "POST")) {
+      strcasecmp(method, "POST") && strcasecmp(method, "DELETE")) {
     clienterror(fd, method, "501", "Not Implemented",
                 "Tiny does not implement this method");
     return;
@@ -172,11 +172,11 @@ void doit(int fd) {
 		return;
 	}
 
-  if (content_length > 0) {  // process request body for POST
-    Rio_readnb(&rio, cgiargs, content_length);
-  }
+  // if (content_length > 0) {  // process request body for POST
+  //   Rio_readnb(&rio, cgiargs, content_length);
+  // }
 
-	do_serve(fd, &rio, api, cgiargs, token);
+	do_serve(fd, &rio, api, cgiargs, token, content_length);
 }
 
 void sigchld_handler(int sig) {

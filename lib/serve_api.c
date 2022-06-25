@@ -55,7 +55,8 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
   do {
     Rio_readlineb(rp, buf, MAXLINE);
     printf("%s", buf);
-    if ((p = strstr(buf, "Content-Length:")) != NULL) {
+		if ((p = strstr(buf, "Content-Length:")) ||
+				(p = strstr(buf, "content-length:"))) {
       *content_length = strtol(p + 16, NULL, 10);
     } else if ((p = strstr(buf, "token:")) != NULL) {
 			// puts("find token");
@@ -67,7 +68,6 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token) {
 }
 
 void serve_user(int fd, char *token) {
-	printf("Log: token = %s\n", token);
 	if (!strcmp(token, "")) {
 		clienterror(fd, "/user", "401", "Unauthorized", "You should login first");
 		return;
@@ -234,9 +234,51 @@ void serve_create_file(int fd, char *api, char *token) {
 	}
 }
 
-void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
-	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\n",
-			api, strlen(api), cgiargs, strlen(cgiargs), token, strlen(token));
+void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
+		int content_length) {
+	char *json_string, file_path[MAXLINE], command[MAXLINE];
+	const char *name;
+	char *relative_path = api + 11;
+	json_object *root, *resp, *data, *fail;
+	int n, success = 1;
+
+	json_string = Malloc(content_length + 1);
+	Rio_readnb(rp, json_string, content_length);
+	json_string[content_length] = '\0';
+	root = json_tokener_parse(json_string);
+
+	resp = json_object_new_object();
+	data = json_object_new_object();
+	fail = json_object_new_array();
+	// Link components
+	json_object_object_add(resp, "data", data);
+	json_object_object_add(data, "fail", fail);
+
+	// Build fail
+	n = json_object_array_length(root);
+	for (int i = 0; i < n; ++i) {
+		json_object *name_obj = json_object_array_get_idx(root, i);
+		name = json_object_get_string(name_obj);
+		sprintf(file_path, "file/%s%s%s", token, relative_path, name);
+		sprintf(command, "rm -r %s", file_path);
+		if (system(command)) {
+			json_object_array_add(fail, json_object_new_string(name));
+			success = 0;
+		}
+	}
+
+	json_object_object_add(data, "success", json_object_new_boolean(success));
+	serve_json(fd, resp);
+
+	json_object_put(root);
+	json_object_put(resp);
+	free(json_string);
+}
+
+void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
+		int content_length) {
+	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\ncontent_length: %d\n",
+			api, strlen(api), cgiargs, strlen(cgiargs), token, strlen(token), content_length);
 
 	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
@@ -246,6 +288,8 @@ void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
 		serve_file(fd, api, token);
 	} else if (str_start_with(api, "createFolder/")) {
 		serve_create_file(fd, api, token);
+	} else if (str_start_with(api, "deleteFiles/")) {
+		serve_delete_files(fd, rp, api, token, content_length);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}

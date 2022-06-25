@@ -16,6 +16,9 @@ void serve_user(int fd, char *token);
 void serve_login(int fd, char *cgiargs);
 void serve_file(int fd, char *api, char *token);
 void serve_create_file(int fd, char *api, char *token);
-void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token);
+void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
+		int content_length);
+void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
+		int content_length);
 
 #endif	// __SERVE_API_H__
