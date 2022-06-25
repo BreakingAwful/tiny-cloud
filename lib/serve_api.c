@@ -266,7 +266,7 @@ void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
 		json_object *name_obj = json_object_array_get_idx(root, i);
 		name = json_object_get_string(name_obj);
 		sprintf(file_path, "file/%s%s%s", token, relative_path, name);
-		sprintf(command, "rm -r %s", file_path);
+		sprintf(command, "rm -r '%s'", file_path);
 		if (system(command)) {
 			json_object_array_add(fail, json_object_new_string(name));
 			success = 0;
