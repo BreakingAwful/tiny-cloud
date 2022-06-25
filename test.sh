@@ -13,3 +13,7 @@ test_api "/login"
 test_api "/file/"
 
 curl "localhost:8181/cloudbox/file" -H "token: jax"
+
+curl "localhost:8181/cloudbox/createFolder/hello/dir" -H "token: jax"
+
+curl "localhost:8181/cloudbox/createFolder/测试中文" -H "token: jax"

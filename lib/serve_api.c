@@ -216,16 +216,36 @@ void serve_file(int fd, char *api, char *token) {
 	json_object_put(root);
 }
 
+void serve_create_file(int fd, char *api, char *token) {
+	char folder_path[MAXLINE], command[MAXLINE];
+	char *relative_path = api + 12;
+
+	sprintf(folder_path, "file/%s%s", token, relative_path);
+	if (!decode_url(folder_path)) {
+		clienterror(fd, api, "400", "Bad Request", "Invalid folder path");
+		return;
+	}
+	sprintf(command, "mkdir %s", folder_path);
+
+	if (system(command)) {
+		clienterror(fd, api, "500", "Internal Error", "Create folder error");
+	} else {
+		clienterror(fd, api, "200", "OK", "Create folder success");
+	}
+}
+
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token) {
 	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\n",
 			api, strlen(api), cgiargs, strlen(cgiargs), token, strlen(token));
 
 	if (str_start_with(api, "user")) {
 		serve_user(fd, token);
-	} else if(str_start_with(api, "login")) {
+	} else if (str_start_with(api, "login")) {
 		serve_login(fd, cgiargs);
-	} else if(str_start_with(api, "file")) {
+	} else if (str_start_with(api, "file")) {
 		serve_file(fd, api, token);
+	} else if (str_start_with(api, "createFolder/")) {
+		serve_create_file(fd, api, token);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}
