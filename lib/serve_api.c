@@ -134,6 +134,11 @@ void serve_file(int fd, char *api, char *token) {
 	DIR *dirp;
 	json_object *root, *data, *children;
 
+	if (strlen(token) == 0) {
+		clienterror(fd, api, "400", "Bad Request", "Invalid token");
+		return;
+	}
+
 	relative_path = api + 4;
 	if (*relative_path == '\0') {
 		strcpy(relative_path, "/");
