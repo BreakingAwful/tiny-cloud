@@ -7,7 +7,7 @@
 
 #include "csapp.h"
 
-#define MAXFILE 500 << 10
+#define MAXFILE (500 << 10)
 #define MAXSTR 1024
 
 int str_start_with(char *str, char *tar) {
