@@ -57,7 +57,12 @@ int main(int argc, char **argv) {
     Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE,
                 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
-    doit(connfd);
+
+		if (Fork() == 0) {
+			doit(connfd);
+			Close(connfd);
+			exit(EXIT_SUCCESS);
+		}
     Close(connfd);
   }
 }
@@ -181,7 +186,7 @@ void sigchld_handler(int sig) {
 
   while (waitpid(-1, NULL, WNOHANG | WUNTRACED) > 0)
     ;
-  if (errno != ECHILD) {
+  if (errno != ECHILD && errno != 0) {
     unix_error("sigchld_handler error");
   }
 
