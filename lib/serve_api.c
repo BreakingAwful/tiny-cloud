@@ -150,6 +150,10 @@ void serve_file(int fd, char *api, char *token) {
 		strcpy(relative_path, "/");
 	}
 	sprintf(path, "file/%s%s", token, relative_path);
+	if (!decode_url(path)) {
+		clienterror(fd, api, "400", "Bad Request", "Invalid folder path");
+		return;
+	}
 
 	if (stat(path, &sbuf) < 0) {
 		clienterror(fd, api, "404", "Not Found",
@@ -299,6 +303,11 @@ void serve_upload_file(int fd, rio_t *rp, char *api, char *token,
 	} while (strcmp(buf, "\r\n"));
 	relative_path = api + 10;
 	sprintf(file_path, "file/%s%s%s", token, relative_path, filename);
+	if (!decode_url(file_path)) {
+		clienterror(fd, api, "400", "Bad Request", "Parent folder not exists");
+		return;
+	}
+	printf("save_file_path: %s\n", file_path);
 
 	// Read & write data
 	file = Fopen(file_path, "w");

@@ -51,13 +51,14 @@ int decode_url(char *url) {
 
 		val = 0;
 		for (int i = 1; i <= 2; ++i) {
+			if (r[i] == '\0') return 0;
 			val = val * 16 + r[i];
 			if ('0' <= r[i] && r[i] <= '9') val -= '0';
 			else if ('a' <= r[i] && r[i] <= 'z') val -= 'a' - 10;
 			else if ('A' <= r[i] && r[i] <= 'Z') val -= 'A' - 10;
 			else return 0;
 		}
-		printf("val = %d\n", val);
+		// printf("val = %d\n", val);
 
 		*l = (char)val;
 		++l, r += 3;
