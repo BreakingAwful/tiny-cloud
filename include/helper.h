@@ -85,4 +85,18 @@ void copy_str_until(char *dest, char *src, char end) {
 	*p = '\0';
 }
 
+char *str_after(char *src, char *tar) {
+	char *p, *q;
+
+	if (src == NULL || tar == NULL) return NULL;
+
+	for (p = src, q = tar; *p == *q && *q != '\0'; ++p, ++q);
+
+	return (*q == '\0') ? p : NULL;
+}
+
+char *find_str_after(char *src, char *tar) {
+	return str_after(strstr(src, tar), tar);
+}
+
 #endif	// __HELPER_H__

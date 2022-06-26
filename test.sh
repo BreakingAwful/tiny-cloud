@@ -19,3 +19,7 @@ curl "localhost:8181/cloudbox/createFolder/hello/dir" -H "token: jax"
 curl "localhost:8181/cloudbox/createFolder/测试中文" -H "token: jax"
 
 curl "localhost:8181/cloudbox/deleteFiles/" -H "token: jax" --json '["tmp"]'
+
+test_api "/checkUserName/jax"
+
+test_api "/checkUserName/admin"

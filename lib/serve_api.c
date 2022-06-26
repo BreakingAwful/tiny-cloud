@@ -74,16 +74,24 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token,
 }
 
 void serve_user(int fd, char *token) {
+	char file_path[MAXLINE];
+	struct stat sbuf;
+
 	if (!strcmp(token, "")) {
 		clienterror(fd, "/user", "401", "Unauthorized", "You should login first");
 		return;
 	}
 
-	// TODO: check token
+	// check token
+	sprintf(file_path, "file/.user/%s", token);
+	if (stat(file_path, &sbuf) < 0) {
+		clienterror(fd, "/user", "400", "Bad Request", "Invalid token");
+		return;
+	}
 
 	json_object *root = json_object_new_object();
 	json_object *data = json_object_new_object();
-	json_object_object_add(data, "username", json_object_new_string("Jax"));
+	json_object_object_add(data, "username", json_object_new_string(token));
 	json_object_object_add(data, "sex", json_object_new_string("男"));
 	json_object_object_add(data, "describeWord", json_object_new_string("测试"));
 	json_object_object_add(data, "photo", json_object_new_string("https://jaxvanyang.github.io/favicon.ico"));
@@ -93,36 +101,43 @@ void serve_user(int fd, char *token) {
 }
 
 void serve_login(int fd, char *cgiargs) {
-	char username[MAXLINE], password[MAXLINE];
-	char *p, *q;
-	size_t len;
+	char *username, *password;
+	char file_path[MAXLINE], str[MAXSTR];
+	FILE *file;
 
-	// Empty string
-	*username = *password = '\0';
-
-	if ((p = strstr(cgiargs, "username="))) {
-		if ((q = index(p, '&'))) {
-			len = q - p - 9;
-			strncpy(username, p + 9, len);
-			username[len] = '\0';
-		} else {
-			strcpy(username, p + 9);
-		}
+	if ((username = str_after(cgiargs, "username=")) == NULL) {
+		clienterror(fd, "/login", "400", "Bad Request", "Invalid request username");
+		return;
 	}
 
-	if ((p = strstr(cgiargs, "password="))) {
-		if ((q = index(p, '&'))) {
-			len = q - p - 9;
-			strncpy(password, p + 9, len);
-			password[len] = '\0';
-		} else {
-			strcpy(password, p + 9);
-		}
+	if ((password = find_str_after(username, "password="))== NULL) {
+		clienterror(fd, "/login", "400", "Bad Request",
+				"Invalid request password");
+		return;
 	}
 
-	printf("cgiargs = %s, username = %s, password = %s\n", cgiargs, username, password);
+	// Split username and password
+	*strstr(username, "&password=") = '\0';
 
-	// TODO: check user info
+	if (!decode_url(username) || !decode_url(password)) {
+		clienterror(fd, "/login", "400", "Bad Request", "Invalid request params");
+		return;
+	}
+	printf("username = %s, password = %s\n", username, password);
+
+	// Check user info
+	sprintf(file_path, "file/.user/%s", username);
+	if ((file = fopen(file_path, "r")) == NULL) {
+		clienterror(fd, "/login", "400", "Bad Request", "User not exists");
+		return;
+	}
+	fscanf(file, "%s", str);
+	printf("str = %s\n", str);
+	Fclose(file);
+	if (strcmp(str, password)) {
+		clienterror(fd, "/login", "400", "Bad Request", "Password not correct");
+		return;
+	}
 
 	json_object *root = json_object_new_object();
 	json_object *data = json_object_new_object();
@@ -339,6 +354,73 @@ void serve_upload_file(int fd, rio_t *rp, char *api, char *token,
 	Fclose(file);
 }
 
+void serve_check_user_name(int fd, char *api) {
+	struct stat sbuf;
+	char folder_path[MAXLINE];
+
+	char *username = strchr(api, '/');
+	if (!decode_url(username)) {
+		clienterror(fd, api, "400", "Bad Request", "Invalid request user name");
+		return;
+	}
+
+	sprintf(folder_path, "file%s", username);
+	if (stat(folder_path, &sbuf) < 0) {
+		clienterror(fd, api, "404", "Not Found", "User not exists");
+		return;
+	}
+
+	clienterror(fd, api, "200", "OK", "User exists");
+}
+
+void serve_register(int fd, char *cgiargs) {
+	char *username, *password;
+	char folder_path[MAXSTR], command[MAXLINE], file_path[MAXLINE];
+	FILE *file;
+	struct stat sbuf;
+
+	if ((username = str_after(cgiargs, "username=")) == NULL) {
+		clienterror(fd, "/register", "400", "Bad Request", "Invalid request username");
+		return;
+	}
+
+	if ((password = find_str_after(username, "password="))== NULL) {
+		clienterror(fd, "/register", "400", "Bad Request",
+				"Invalid request password");
+		return;
+	}
+
+	// Split username and password
+	*strstr(username, "&password=") = '\0';
+	printf("username = %s, password = %s\n", username, password);
+
+	if (!decode_url(username) || !decode_url(password)) {
+		clienterror(fd, "/register", "400", "Bad Request", "Invalid request params");
+		return;
+	}
+
+	sprintf(folder_path, "file/%s", username);
+	if (stat(folder_path, &sbuf) >= 0) {
+		clienterror(fd, "/register", "400", "Bad Request", "User already exists");
+		return;
+	}
+
+	sprintf(command, "mkdir '%s'", folder_path);
+	if (system(command)) {
+		clienterror(fd, "/register", "500", "Internal Error",
+				"Failed to create a new user");
+		return;
+	}
+
+	// Store password
+	sprintf(file_path, "file/.user/%s", username);
+	file = Fopen(file_path, "w");
+	fprintf(file, "%s", password);
+	Fclose(file);
+
+	clienterror(fd, "/register", "200", "OK", "Create a user success");
+}
+
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		int content_length, char *boundary) {
 	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\ncontent_length: %d\n",
@@ -357,6 +439,10 @@ void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		serve_delete_files(fd, rp, api, token, content_length);
 	} else if (str_start_with(api, "uploadFile/")) {
 		serve_upload_file(fd, rp, api, token, content_length, boundary);
+	} else if (str_start_with(api, "checkUserName/")) {
+		serve_check_user_name(fd, api);
+	} else if (str_start_with(api, "register")) {
+		serve_register(fd, cgiargs);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}

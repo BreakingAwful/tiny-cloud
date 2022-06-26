@@ -21,6 +21,8 @@ void serve_delete_files(int fd, rio_t *rp, char *api, char *token,
 		int content_length);
 void serve_upload_file(int fd, rio_t *rp, char *api, char *token,
 		int content_length, char *boundary);
+void serve_check_user_name(int fd, char *api);
+void serve_register(int fd, char *cgiargs);
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		int content_length, char *boundary);
 

@@ -41,6 +41,9 @@ $(BUILD_DIR)/serve_api.o: $(LIB_DIR)/serve_api.c
 	mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) -fpic -c -o $@ $^
 
-.PHONY: clean
+.PHONY: clean init
 clean:
 	-rm -r $(BUILD_DIR) $(BIN_DIR)
+
+init:
+	mkdir -p file/.user
