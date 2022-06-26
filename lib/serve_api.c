@@ -79,7 +79,8 @@ void read_requesthdrs(rio_t *rp, int *content_length, char *token,
 		if ((p = strstr(buf, "Content-Length:")) ||
 				(p = strstr(buf, "content-length:"))) {
       *content_length = strtol(p + 16, NULL, 10);
-    } else if ((p = strstr(buf, "token:")) != NULL) {
+    } else if ((p = strstr(buf, "token:")) ||
+				(p = strstr(buf, "Token:"))) {
 			// puts("find token");
 			strcpy(token, p + 7);
 			size_t len = strlen(token);
