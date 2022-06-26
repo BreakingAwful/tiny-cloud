@@ -4,6 +4,23 @@
 
 #include "serve_api.h"
 #include "helper.h"
+#include "csapp.h"
+
+// Derive file type from filename
+void get_filetype(char *filename, char *filetype) {
+  if (strstr(filename, ".html"))
+    strcpy(filetype, "text/html");
+  else if (strstr(filename, ".gif"))
+    strcpy(filetype, "image/gif");
+  else if (strstr(filename, ".jpg"))
+    strcpy(filetype, "image/jpeg");
+  else if (strstr(filename, ".png"))
+    strcpy(filetype, "image/png");
+  else if (strstr(filename, ".mp4")) {
+    strcpy(filetype, "video/mp4");
+  } else
+    strcpy(filetype, "text/plain");
+}
 
 void serve_json(int fd, json_object *root) {
   char buf[MAXLINE], body[MAXBUF];
@@ -149,7 +166,7 @@ void serve_login(int fd, char *cgiargs) {
 	json_object_put(root);
 }
 
-void serve_file(int fd, char *api, char *token) {
+void serve_get_files(int fd, char *api, char *token) {
 	char path[MAXLINE], *relative_path;
 	struct stat sbuf;
 	DIR *dirp;
@@ -160,7 +177,7 @@ void serve_file(int fd, char *api, char *token) {
 		return;
 	}
 
-	relative_path = api + 4;
+	relative_path = str_after(api, "getFiles");
 	if (*relative_path == '\0') {
 		strcpy(relative_path, "/");
 	}
@@ -170,6 +187,7 @@ void serve_file(int fd, char *api, char *token) {
 		return;
 	}
 
+	printf("path = %s\n", path);
 	if (stat(path, &sbuf) < 0) {
 		clienterror(fd, api, "404", "Not Found",
 				"File or directory does not exist");
@@ -421,6 +439,64 @@ void serve_register(int fd, char *cgiargs) {
 	clienterror(fd, "/register", "200", "OK", "Create a user success");
 }
 
+void serve_file(int fd, char *api, char *token) {
+	char *filename, *srcp;
+	int srcfd;
+	size_t filesize, n;
+	char filetype[MAXSTR], buf[MAXBUF], file_path[MAXLINE];
+	struct stat sbuf;
+
+	// Check if file exists
+	filename = str_after(api, "file");
+	sprintf(file_path, "file/%s%s", token, filename);
+	if (!decode_url(file_path)) {
+		clienterror(fd, api, "400", "Bad Request", "Invalid file path");
+		return;
+	}
+	if (stat(file_path, &sbuf) < 0) {
+		clienterror(fd, api, "404", "Not Found", "File not found");
+		return;
+	}
+
+	// Check if the file is readable
+	if (!S_ISREG(sbuf.st_mode) || !(S_IRUSR & sbuf.st_mode)) {
+		clienterror(fd, api, "500", "Internal Error", "Tiny cannot serve this file");
+		return;
+	}
+
+	// Send response headers to client
+	filesize = sbuf.st_size;
+	get_filetype(filename, filetype);
+	sprintf(buf,
+			"HTTP/1.0 200 OK\r\n"
+			"Server: Tiny Web Server\r\n"
+			"Connection: close\r\n"
+			"Content-length: %ld\r\n"
+			"Content-type: %s\r\n\r\n",
+			filesize, filetype);
+	// Rio_writen(fd, buf, strlen(buf));
+	n = strlen(buf);
+	if (rio_writen(fd, buf, n) != n) {
+		if (errno == EPIPE) {  // Client closed connection
+			return;
+		} else {
+			unix_error("rio_writen error");
+		}
+	}
+	// printf("Response headers:\n%s", buf);
+
+	// Send response body to client
+	srcfd = Open(file_path, O_RDONLY, 0);
+	srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+	Close(srcfd);
+	// Rio_writen(fd, srcp, filesize);
+	if (rio_writen(fd, srcp, filesize) != filesize && errno != EPIPE) {
+		unix_error("rio_writen error");
+	}
+	// Client may close too early here, but later operations are the same
+	Munmap(srcp, filesize);
+}
+
 void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		int content_length, char *boundary) {
 	printf("api: %s, %ld\ncgiargs: %s, %ld\ntoken: %s, %ld\ncontent_length: %d\n",
@@ -431,8 +507,8 @@ void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		serve_user(fd, token);
 	} else if (str_start_with(api, "login")) {
 		serve_login(fd, cgiargs);
-	} else if (str_start_with(api, "file")) {
-		serve_file(fd, api, token);
+	} else if (str_start_with(api, "getFiles/")) {
+		serve_get_files(fd, api, token);
 	} else if (str_start_with(api, "createFolder/")) {
 		serve_create_file(fd, api, token);
 	} else if (str_start_with(api, "deleteFiles/")) {
@@ -443,6 +519,8 @@ void do_serve(int fd, rio_t *rp, char *api, char *cgiargs, char *token,
 		serve_check_user_name(fd, api);
 	} else if (str_start_with(api, "register")) {
 		serve_register(fd, cgiargs);
+	} else if (str_start_with(api, "file/")) {
+		serve_file(fd, api, token);
 	} else {
 		clienterror(fd, api, "400", "Bad Request", "Tiny does not support this API");
 	}

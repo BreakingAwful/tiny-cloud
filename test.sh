@@ -10,7 +10,7 @@ test_api "/login?username=a&password=b"
 
 test_api "/login"
 
-test_api "/file/"
+test_api "/file/.user/jax"
 
 curl "localhost:8181/cloudbox/file" -H "token: jax"
 

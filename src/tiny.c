@@ -28,7 +28,6 @@ void free_list(PathNode *listp);
 void doit(int fd);
 int parse_uri(char *uri, char *api, char *cgiargs);
 int simplify_uri(char *uri);
-void get_filetype(char *filename, char *filetype);
 void serve_static(int fd, char *filename, size_t filesize,
 		char *request_method);
 void sigchld_handler(int sig);
@@ -126,7 +125,6 @@ void doit(int fd) {
   char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
   char api[MAXLINE], cgiargs[MAXLINE], token[MAXLINE], boundary[MAXLINE];
   rio_t rio;
-	struct stat sbuf;
 
 	// Empty string
 	*buf = *method = *uri = *version = *api = *cgiargs = *token = '\0';
@@ -161,14 +159,8 @@ void doit(int fd) {
   // Parse URI from request
   is_valid = parse_uri(uri, api, cgiargs);
 	if (!is_valid) {
-		if (stat(api, &sbuf) >= 0 && S_ISREG(sbuf.st_mode) &&
-				(S_IRUSR & sbuf.st_mode)) {
-			// Used for development
-			serve_static(fd, api, sbuf.st_size, method);
-		} else {
-			clienterror(fd, uri, "404", "Invalid API",
-					"Tiny does not implement this API");
-		}
+		clienterror(fd, uri, "404", "Invalid API",
+				"Tiny does not implement this API");
 		return;
 	}
 
@@ -210,12 +202,6 @@ void sigpipe_handler(int sig) {
 // uri example: /cloudbox/login?username=a&passwd=a
 int parse_uri(char *uri, char *api, char *cgiargs) {
   char *ptr;
-
-	// Used for development
-	if (str_start_with(uri, "/file")) {
-		sprintf(api, "%s", uri + 1);
-		return 0;	// file is not API
-	}
 
 	if (!str_start_with(uri, "/cloudbox/")) return 0;
 
@@ -288,57 +274,3 @@ int simplify_uri(char *uri) {
   return 1;
 }
 
-// Derive file type from filename
-void get_filetype(char *filename, char *filetype) {
-  if (strstr(filename, ".html"))
-    strcpy(filetype, "text/html");
-  else if (strstr(filename, ".gif"))
-    strcpy(filetype, "image/gif");
-  else if (strstr(filename, ".jpg"))
-    strcpy(filetype, "image/jpeg");
-  else if (strstr(filename, ".png"))
-    strcpy(filetype, "image/png");
-  else if (strstr(filename, ".mp4")) {
-    strcpy(filetype, "video/mp4");
-  } else
-    strcpy(filetype, "text/plain");
-}
-
-void serve_static(int fd, char *filename, size_t filesize,
-		char *request_method) {
-	int srcfd;
-	size_t n;
-	char *srcp, filetype[MAXTYPE], buf[MAXBUF];
-
-	// Send response headers to client
-	get_filetype(filename, filetype);
-	sprintf(buf,
-			"HTTP/1.0 200 OK\r\n"
-			"Server: Tiny Web Server\r\n"
-			"Connection: close\r\n"
-			"Content-length: %ld\r\n"
-			"Content-type: %s\r\n\r\n",
-			filesize, filetype);
-	// Rio_writen(fd, buf, strlen(buf));
-	n = strlen(buf);
-	if (rio_writen(fd, buf, n) != n) {
-		if (errno == EPIPE) {  // Client closed connection
-			return;
-		} else {
-			unix_error("rio_writen error");
-		}
-	}
-	if (!strcasecmp(request_method, "HEAD")) return;
-	printf("Response headers:\n%s", buf);
-
-	// Send response body to client
-	srcfd = Open(filename, O_RDONLY, 0);
-	srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-	Close(srcfd);
-	// Rio_writen(fd, srcp, filesize);
-	if (rio_writen(fd, srcp, filesize) != filesize && errno != EPIPE) {
-		unix_error("rio_writen error");
-	}
-	// Client may close too early here, but later operations are the same
-	Munmap(srcp, filesize);
-}
