@@ -13,13 +13,14 @@ OBJS := $(SRCS:%.c=$(BUILD_DIR)/%.o)
 OUTS := $(SRCS:%.c=$(BUILD_DIR)/%)
 
 CPPFLAGS := $(INC_FLAGS) -Wall -g -Iinclude
+LDFLAGS := -pthread -ljson-c
 
 all: $(OUTS)
 	mkdir -p $(BIN_DIR)
 	cp $^ $(BIN_DIR)
 
 $(BUILD_DIR)/%: $(BUILD_DIR)/%.o $(GLOBAL_LIBS:%=$(BUILD_DIR)/%)
-	$(CC) $^ -o $@ $(LDFLAGS) -ljson-c
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.o: %.c
 	mkdir -p $(dir $@)
